@@ -8,11 +8,11 @@ interface StatusBadgeProps {
 
 const statusConfig: Record<OrderStatus, { label: string; className: string }> = {
   pending: { label: 'Pending', className: 'status-pending' },
+  accepted: { label: 'Accepted', className: 'bg-primary/10 text-primary' },
   preparing: { label: 'Preparing', className: 'status-preparing' },
   ready: { label: 'Ready', className: 'status-ready' },
   served: { label: 'Served', className: 'status-served' },
-  paid: { label: 'Paid', className: 'status-paid' },
-  cancelled: { label: 'Cancelled', className: 'bg-destructive/20 text-destructive border border-destructive/30' },
+  cancelled: { label: 'Cancelled', className: 'status-cancelled' },
 };
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
@@ -21,7 +21,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium",
+        "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold",
         config.className,
         className
       )}
