@@ -2,13 +2,15 @@ export interface MenuItem {
   id: string;
   name: string;
   price: number;
-  category: string;
+  category: 'Tea' | 'Snacks' | 'Cold Drink' | 'Pastry';
   available: boolean;
+  description?: string;
   image?: string;
 }
 
 export interface OrderItem {
   id: string;
+  menuItemId: string;
   name: string;
   qty: number;
   price: number;
@@ -16,36 +18,39 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
-  table: number;
-  phone: string;
+  tableNumber: number;
+  customerPhone: string;
   items: OrderItem[];
   status: OrderStatus;
-  time: string;
+  createdAt: string;
+  updatedAt: string;
   total: number;
   notes?: string;
 }
 
-export type OrderStatus = 'pending' | 'preparing' | 'ready' | 'served' | 'paid' | 'cancelled';
+export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'served' | 'cancelled';
 
 export interface Bill {
   id: string;
-  table: number;
-  customers: string[];
+  tableNumber: number;
   orders: Order[];
+  customerPhones: string[];
   subtotal: number;
   discount: number;
   total: number;
-  status: 'active' | 'paid';
-  paidAt?: string;
+  status: 'unpaid' | 'paid';
   paymentMethod?: 'cash' | 'fonepay';
+  paidAt?: string;
+  createdAt: string;
 }
 
 export interface Transaction {
   id: string;
   billId: string;
-  table: number;
-  customers: string[];
+  tableNumber: number;
+  customerPhones: string[];
   total: number;
+  discount: number;
   paymentMethod: 'cash' | 'fonepay';
   paidAt: string;
   items: OrderItem[];
@@ -54,9 +59,26 @@ export interface Transaction {
 export interface Customer {
   phone: string;
   name?: string;
-  loyaltyPoints: number;
-  visits: number;
-  lastVisit?: string;
+  totalOrders: number;
+  totalSpent: number;
+  lastVisit: string;
+}
+
+export interface Staff {
+  id: string;
+  username: string;
+  password: string;
+  role: 'admin' | 'counter';
+  name: string;
+  createdAt: string;
+}
+
+export interface Settings {
+  restaurantName: string;
+  tableCount: number;
+  wifiSSID: string;
+  wifiPassword: string;
+  baseUrl: string;
 }
 
 export interface DashboardStats {
