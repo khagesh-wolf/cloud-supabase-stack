@@ -87,6 +87,7 @@ interface StoreState extends AuthState {
   bills: Bill[];
   createBill: (tableNumber: number, orderIds: string[], discount?: number) => Bill;
   payBill: (billId: string, paymentMethod: 'cash' | 'fonepay') => void;
+  redeemPoints: (phone: string, points: number) => void;
   getUnpaidOrdersByTable: (tableNumber: number) => Order[];
 
   // Transactions
@@ -253,8 +254,15 @@ export const useStore = create<StoreState>()(
 
         // Update customer spending
         bill.customerPhones.forEach(phone => {
-          get().addOrUpdateCustomer(phone, bill.total / bill.customerPhones.length);
+        get().addOrUpdateCustomer(phone, bill.total / bill.customerPhones.length);
+      });
+
+      // Deduct redeemed points if discount was applied
+      if (bill.discount > 0) {
+        bill.customerPhones.forEach(phone => {
+          get().redeemPoints(phone, bill.discount);
         });
+      }
       },
 
       getUnpaidOrdersByTable: (tableNumber) =>
@@ -302,6 +310,18 @@ export const useStore = create<StoreState>()(
             points: newPoints,
             lastVisit: getNepalTimestamp(),
           }]
+        };
+      }),
+
+      redeemPoints: (phone, points) => set((state) => {
+        const existing = state.customers.find(c => c.phone === phone);
+        if (!existing) return {};
+        return {
+          customers: state.customers.map(c =>
+            c.phone === phone
+              ? { ...c, points: Math.max(0, c.points - points) }
+              : c
+          )
         };
       }),
 

@@ -11,11 +11,11 @@ import {
   Search,
   LogOut,
   Printer,
-  RefreshCw,
-  QrCode
+  RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatNepalTime, formatNepalDateTime } from '@/lib/nepalTime';
+import FonepayQR from '@/components/FonepayQR';
 
 interface BillGroup {
   key: string;
@@ -636,23 +636,13 @@ export default function Counter() {
 
       {/* Fonepay QR Modal */}
       <Dialog open={fonepayModalOpen} onOpenChange={setFonepayModalOpen}>
-        <DialogContent className="max-w-sm text-center">
-          <DialogHeader>
-            <DialogTitle className="text-[#c32148]">Scan to Pay</DialogTitle>
-          </DialogHeader>
-          <div className="text-[#666] text-sm mb-4">Dynamic QR</div>
-          <div className="flex justify-center mb-4">
-            <div className="w-[180px] h-[180px] bg-[#f0f0f0] rounded-lg flex items-center justify-center">
-              <QrCode className="w-24 h-24 text-[#333]" />
-            </div>
-          </div>
-          <div className="text-3xl font-bold mb-6">रू{paymentTotal}</div>
-          <Button 
-            className="w-full bg-[#27ae60] hover:bg-[#27ae60]/90 py-6"
-            onClick={() => executePayment('fonepay')}
-          >
-            Payment Received
-          </Button>
+        <DialogContent className="max-w-sm p-0">
+          <FonepayQR
+            amount={paymentTotal}
+            orderId={selectedGroups[0]?.key || 'ORDER'}
+            onSuccess={() => executePayment('fonepay')}
+            onCancel={() => setFonepayModalOpen(false)}
+          />
         </DialogContent>
       </Dialog>
 
