@@ -1,58 +1,63 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '@/store/useStore';
-import { OrderItem } from '@/types';
-import { StatusBadge } from '@/components/ui/StatusBadge';
+import { Order, OrderItem } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  Plus, 
-  Minus, 
-  ShoppingCart, 
-  CreditCard, 
-  Banknote, 
   Check,
-  History,
-  Receipt,
-  Search,
   X,
+  Search,
   LogOut,
-  Printer
+  Printer,
+  RefreshCw,
+  QrCode
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatNepalTime, formatNepalDateTime } from '@/lib/nepalTime';
 
+interface BillGroup {
+  key: string;
+  phone: string;
+  tableNumber: number;
+  points: number;
+  subtotal: number;
+  items: { name: string; qty: number; price: number; total: number }[];
+  createdAt: string;
+}
+
 export default function Counter() {
   const navigate = useNavigate();
+  const printRef = useRef<HTMLDivElement>(null);
   const { 
-    menuItems, 
     orders, 
     bills, 
     transactions,
+    customers,
     createBill, 
-    addOrder,
     payBill,
     updateOrderStatus,
-    getUnpaidOrdersByTable,
     isAuthenticated,
     currentUser,
     logout,
-    settings
+    settings,
+    getCustomerPoints
   } = useStore();
 
-  const [tab, setTab] = useState('orders');
-  const [billingTable, setBillingTable] = useState('');
-  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
-  const [paymentModal, setPaymentModal] = useState(false);
-  const [currentBillId, setCurrentBillId] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  // New order state
-  const [orderTable, setOrderTable] = useState('');
-  const [orderPhone, setOrderPhone] = useState('');
-  const [cart, setCart] = useState<OrderItem[]>([]);
+  const [activeTab, setActiveTab] = useState<'active' | 'accepted' | 'history'>('active');
+  const [searchInput, setSearchInput] = useState('');
+  const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [fonepayModalOpen, setFonepayModalOpen] = useState(false);
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [historyDate, setHistoryDate] = useState('');
+  const [historyLimit, setHistoryLimit] = useState(10);
+  const [billsLimit, setBillsLimit] = useState(10);
+  const [redeemPoints, setRedeemPoints] = useState(false);
+  const [lastPaidData, setLastPaidData] = useState<any>(null);
+  const [currentDetailData, setCurrentDetailData] = useState<any>(null);
 
   // Redirect if not authenticated
   if (!isAuthenticated) {
@@ -60,94 +65,233 @@ export default function Counter() {
     return null;
   }
 
-  // Only show pending and accepted orders
+  // Filter orders
   const pendingOrders = orders.filter(o => o.status === 'pending');
-  const activeOrders = orders.filter(o => o.status === 'accepted');
-  const unpaidBills = bills.filter(b => b.status === 'unpaid');
-  const categories = [...new Set(menuItems.map(m => m.category))];
+  const acceptedOrders = orders.filter(o => o.status === 'accepted');
 
-  const addToCart = (item: typeof menuItems[0]) => {
-    const existing = cart.find(c => c.menuItemId === item.id);
-    if (existing) {
-      setCart(cart.map(c => 
-        c.menuItemId === item.id ? { ...c, qty: c.qty + 1 } : c
-      ));
-    } else {
-      setCart([...cart, { 
-        id: Math.random().toString(36).substring(2, 9),
-        menuItemId: item.id, 
-        name: item.name, 
-        qty: 1, 
-        price: item.price 
-      }]);
-    }
-  };
+  // Group accepted orders by table+phone for billing
+  const getBillGroups = (): BillGroup[] => {
+    const groups: Record<string, BillGroup> = {};
+    
+    acceptedOrders.forEach(order => {
+      // Check if already billed
+      const alreadyBilled = bills.some(b => 
+        b.status === 'paid' && b.orders.some(bo => bo.id === order.id)
+      );
+      if (alreadyBilled) return;
 
-  const updateCartQty = (menuItemId: string, delta: number) => {
-    setCart(cart.map(c => {
-      if (c.menuItemId === menuItemId) {
-        const newQty = c.qty + delta;
-        return newQty > 0 ? { ...c, qty: newQty } : c;
+      const key = `${order.tableNumber}_${order.customerPhone || 'Guest'}`;
+      if (!groups[key]) {
+        const customerPoints = getCustomerPoints(order.customerPhone);
+        groups[key] = {
+          key,
+          phone: order.customerPhone || 'Guest',
+          tableNumber: order.tableNumber,
+          points: customerPoints,
+          subtotal: 0,
+          items: [],
+          createdAt: order.createdAt
+        };
       }
-      return c;
-    }).filter(c => c.qty > 0));
-  };
+      
+      order.items.forEach(item => {
+        const itemTotal = item.qty * item.price;
+        groups[key].subtotal += itemTotal;
+        groups[key].items.push({
+          name: item.name,
+          qty: item.qty,
+          price: item.price,
+          total: itemTotal
+        });
+      });
+    });
 
-  const cartTotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-
-  const placeOrder = () => {
-    if (!orderTable || !orderPhone || cart.length === 0) {
-      toast.error('Please fill table number, phone, and add items');
-      return;
+    // Apply search filter
+    let result = Object.values(groups);
+    if (searchInput) {
+      const term = searchInput.toLowerCase();
+      result = result.filter(g => 
+        g.tableNumber.toString().includes(term) || 
+        g.phone.toLowerCase().includes(term)
+      );
     }
-    const tableNum = parseInt(orderTable);
-    addOrder(tableNum, orderPhone, cart);
-    toast.success('Order placed successfully!');
-    setCart([]);
-    setOrderTable('');
-    setOrderPhone('');
+
+    return result.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   };
 
-  const handleAccept = (orderId: string) => {
-    updateOrderStatus(orderId, 'accepted');
-    toast.success('Order accepted - Print for kitchen');
+  const billGroups = getBillGroups();
+
+  // Get selected groups for payment
+  const selectedGroups = billGroups.filter(g => selectedPhones.includes(g.phone));
+  const paymentSubtotal = selectedGroups.reduce((sum, g) => sum + g.subtotal, 0);
+  const availablePoints = selectedPhones.length === 1 ? (selectedGroups[0]?.points || 0) : 0;
+  const discountAmount = redeemPoints ? Math.min(availablePoints, paymentSubtotal) : 0;
+  const paymentTotal = paymentSubtotal - discountAmount;
+
+  // History data
+  const getHistoryData = () => {
+    let data = [...transactions];
+    if (historyDate) {
+      data = data.filter(t => t.paidAt.startsWith(historyDate));
+    }
+    return data.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+  };
+
+  const historyData = getHistoryData();
+
+  const handleAccept = (order: Order) => {
+    updateOrderStatus(order.id, 'accepted');
+    toast.success('Order accepted');
+    printKOT(order);
   };
 
   const handleReject = (orderId: string) => {
+    if (!confirm('Reject this order?')) return;
     updateOrderStatus(orderId, 'cancelled');
     toast.info('Order rejected');
   };
 
-  const handleLookupTable = () => {
-    const tableNum = parseInt(billingTable);
-    if (!tableNum) {
-      toast.error('Enter a valid table number');
-      return;
+  const printKOT = (order: Order) => {
+    const printContent = `
+      <div style="font-family: monospace; width: 300px; padding: 10px;">
+        <div style="text-align: center; border-bottom: 1px dashed black; padding-bottom: 10px; margin-bottom: 10px;">
+          <h2 style="margin: 0;">KITCHEN ORDER</h2>
+          <div>${formatNepalDateTime(new Date())}</div>
+        </div>
+        <div style="font-size: 1.2rem; font-weight: bold; text-align: center; margin: 10px 0; border: 2px solid black; padding: 5px;">
+          TABLE ${order.tableNumber}
+        </div>
+        <div style="text-align: center; margin-bottom: 10px; font-weight: bold;">Customer: ${order.customerPhone}</div>
+        <div style="border-bottom: 2px solid black; margin-bottom: 10px;"></div>
+        ${order.items.map(i => `
+          <div style="display: flex; justify-content: space-between; font-size: 1.2rem; font-weight: bold; margin-bottom: 5px;">
+            <span>${i.qty} x</span>
+            <span>${i.name}</span>
+          </div>
+        `).join('')}
+        <div style="border-top: 2px solid black; margin-top: 20px; padding-top: 10px; text-align: center;">
+          Ref: #${order.id.slice(-6)}
+        </div>
+      </div>
+    `;
+    
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+      printWindow.close();
     }
-    const unpaidOrders = getUnpaidOrdersByTable(tableNum);
-    if (unpaidOrders.length === 0) {
-      toast.error('No unpaid orders for this table');
-      return;
-    }
-    setSelectedOrderIds(unpaidOrders.map(o => o.id));
   };
 
-  const handleCreateBill = () => {
-    if (selectedOrderIds.length === 0) return;
-    const tableNum = parseInt(billingTable);
-    const bill = createBill(tableNum, selectedOrderIds, 0);
-    setCurrentBillId(bill.id);
-    setPaymentModal(true);
+  const toggleSelectBill = (phone: string) => {
+    if (selectedPhones.includes(phone)) {
+      setSelectedPhones(selectedPhones.filter(p => p !== phone));
+    } else {
+      setSelectedPhones([...selectedPhones, phone]);
+    }
   };
 
-  const handlePayment = (method: 'cash' | 'fonepay') => {
-    if (!currentBillId) return;
-    payBill(currentBillId, method);
+  const openPaymentModal = () => {
+    setRedeemPoints(false);
+    setPaymentModalOpen(true);
+  };
+
+  const processPayment = (method: 'cash' | 'fonepay') => {
+    if (method === 'fonepay') {
+      setPaymentModalOpen(false);
+      setFonepayModalOpen(true);
+      return;
+    }
+
+    if (!confirm(`Confirm CASH payment of रू${paymentTotal}?`)) return;
+    executePayment(method);
+  };
+
+  const executePayment = (method: 'cash' | 'fonepay') => {
+    // Get order IDs from selected groups
+    const orderIds = acceptedOrders
+      .filter(o => selectedPhones.includes(o.customerPhone))
+      .map(o => o.id);
+
+    if (orderIds.length === 0) {
+      toast.error('No orders to pay');
+      return;
+    }
+
+    const tableNumber = selectedGroups[0]?.tableNumber || 0;
+    const bill = createBill(tableNumber, orderIds, discountAmount);
+    payBill(bill.id, method);
+
+    // Store last paid data for printing
+    setLastPaidData({
+      date: formatNepalDateTime(new Date()),
+      table: tableNumber,
+      phones: selectedPhones.join(', '),
+      items: selectedGroups.flatMap(g => g.items),
+      total: paymentTotal,
+      discount: discountAmount,
+      method
+    });
+
+    setPaymentModalOpen(false);
+    setFonepayModalOpen(false);
+    setSuccessModalOpen(true);
+    setSelectedPhones([]);
     toast.success(`Payment completed via ${method}`);
-    setPaymentModal(false);
-    setCurrentBillId(null);
-    setSelectedOrderIds([]);
-    setBillingTable('');
+  };
+
+  const printReceipt = (data: any) => {
+    const printContent = `
+      <div style="font-family: monospace; width: 300px; padding: 10px;">
+        <div style="text-align: center; border-bottom: 1px dashed black; padding-bottom: 10px; margin-bottom: 10px;">
+          <h2 style="margin: 0;">${settings.restaurantName.toUpperCase()}</h2>
+          <div>${data.date}</div>
+          <div>Table: ${data.table} | ${data.method.toUpperCase()}</div>
+          <div>Customer: ${data.phones}</div>
+        </div>
+        ${data.items.map((i: any) => `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>${i.qty}x ${i.name}</span>
+            <span>${i.total}</span>
+          </div>
+        `).join('')}
+        <div style="border-top: 1px dashed black; margin-top: 5px; padding-top: 5px;"></div>
+        ${data.discount > 0 ? `
+          <div style="display: flex; justify-content: space-between;">
+            <span>Discount (Points)</span>
+            <span>-${data.discount}</span>
+          </div>
+        ` : ''}
+        <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 1.2rem; margin-top: 10px;">
+          <span>TOTAL</span>
+          <span>रू${data.total}</span>
+        </div>
+        <div style="text-align: center; font-size: 0.8rem; margin-top: 20px;">Thank You!</div>
+      </div>
+    `;
+    
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+      printWindow.close();
+    }
+  };
+
+  const viewTransactionDetail = (t: typeof transactions[0]) => {
+    setCurrentDetailData({
+      id: t.id,
+      date: t.paidAt,
+      table: t.tableNumber,
+      phones: t.customerPhones.join(', ') || 'Guest',
+      items: t.items,
+      total: t.total,
+      discount: t.discount,
+      method: t.paymentMethod
+    });
+    setDetailModalOpen(true);
   };
 
   const handleLogout = () => {
@@ -155,261 +299,422 @@ export default function Counter() {
     navigate('/auth');
   };
 
-  const filteredTransactions = searchTerm 
-    ? transactions.filter(t => 
-        t.tableNumber.toString().includes(searchTerm) || 
-        t.customerPhones.some(c => c.includes(searchTerm))
-      )
-    : transactions;
-
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-card border-b border-border px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">{settings.restaurantName} - Counter</h1>
-          <p className="text-sm text-muted-foreground">{formatNepalDateTime(new Date())}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-muted-foreground">{currentUser?.name}</span>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" /> Logout
-          </Button>
-        </div>
-      </header>
-
-      <div className="flex h-[calc(100vh-73px)]">
-        {/* Sidebar - Pending Orders */}
-        <div className="w-80 bg-card border-r border-border flex flex-col">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold flex items-center gap-2">
-              Incoming Orders
-              {pendingOrders.length > 0 && (
-                <span className="bg-warning text-warning-foreground px-2 py-0.5 rounded-full text-xs">
-                  {pendingOrders.length}
-                </span>
-              )}
-            </h3>
+    <div className="flex h-screen bg-[#f0f2f5] overflow-hidden">
+      {/* Sidebar - Incoming Orders */}
+      <div className="w-[350px] bg-[#2c3e50] text-white flex flex-col border-r border-[#34495e]">
+        <div className="p-5 bg-[#1a252f] border-b border-[#34495e]">
+          <div className="text-lg font-bold flex justify-between items-center">
+            Incoming Orders
+            <span className="w-2.5 h-2.5 bg-[#e74c3c] rounded-full inline-block animate-pulse" />
           </div>
-          
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
-            {pendingOrders.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">No pending orders</div>
-            ) : (
-              pendingOrders.map(order => (
-                <div key={order.id} className="bg-muted rounded-xl p-3 border-l-4 border-warning animate-slide-up">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <span className="font-bold">Table {order.tableNumber}</span>
-                      <p className="text-xs text-muted-foreground">{order.customerPhone}</p>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {formatNepalTime(order.createdAt)}
-                    </span>
-                  </div>
-                  <div className="space-y-1 text-sm mb-3">
-                    {order.items.map((item, idx) => (
-                      <div key={idx}>{item.qty}x {item.name}</div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" className="flex-1 bg-success hover:bg-success/90" onClick={() => handleAccept(order.id)}>
-                      <Check className="w-3 h-3 mr-1" /> Accept
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleAccept(order.id)}>
-                      <Printer className="w-3 h-3" />
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => handleReject(order.id)}>
-                      <X className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <div className="text-xs text-[#bdc3c7] mt-1">Pending acceptance</div>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col">
-          <Tabs value={tab} onValueChange={setTab} className="flex-1 flex flex-col">
-            <div className="border-b border-border px-4 bg-card">
-              <TabsList className="bg-transparent h-12">
-                <TabsTrigger value="orders" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
-                  <ShoppingCart className="w-4 h-4 mr-2" /> New Order
-                </TabsTrigger>
-                <TabsTrigger value="active" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
-                  Active ({activeOrders.length})
-                </TabsTrigger>
-                <TabsTrigger value="billing" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
-                  <Receipt className="w-4 h-4 mr-2" /> Billing
-                </TabsTrigger>
-                <TabsTrigger value="history" className="data-[state=active]:gradient-primary data-[state=active]:text-white">
-                  <History className="w-4 h-4 mr-2" /> History
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-            {/* New Order Tab */}
-            <TabsContent value="orders" className="flex-1 flex m-0">
-              <div className="flex-1 p-4 overflow-y-auto scrollbar-thin">
-                <div className="flex gap-4 mb-4">
-                  <Input placeholder="Table No." value={orderTable} onChange={(e) => setOrderTable(e.target.value)} className="w-32" type="number" />
-                  <Input placeholder="Customer Phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} className="w-48" />
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {pendingOrders.length === 0 ? (
+            <div className="text-center text-[#7f8c8d] mt-12">No pending orders</div>
+          ) : (
+            pendingOrders.map(order => (
+              <div 
+                key={order.id} 
+                className="bg-white text-[#333] rounded-lg p-4 border-l-4 border-[#f39c12] animate-slide-up"
+              >
+                <div className="flex justify-between font-bold mb-1 border-b border-dashed border-[#eee] pb-1">
+                  <span>Table {order.tableNumber}</span>
+                  <span>{formatNepalTime(order.createdAt)}</span>
                 </div>
-                {categories.map(category => (
-                  <div key={category} className="mb-6">
-                    <h3 className="text-lg font-semibold mb-3 text-primary">{category}</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {menuItems.filter(m => m.category === category && m.available).map(item => (
-                        <button key={item.id} onClick={() => addToCart(item)} className="menu-card p-4 text-left">
-                          <p className="font-medium">{item.name}</p>
-                          <p className="text-primary font-bold">रू {item.price}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Cart Sidebar */}
-              <div className="w-80 bg-card border-l border-border flex flex-col">
-                <div className="p-4 border-b border-border">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <ShoppingCart className="w-4 h-4" /> Cart
-                    {cart.length > 0 && <span className="gradient-primary text-white px-2 py-0.5 rounded-full text-xs">{cart.reduce((s, c) => s + c.qty, 0)}</span>}
-                  </h3>
+                <div className="text-sm text-[#555] italic mb-2">
+                  Customer: {order.customerPhone}
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-thin">
-                  {cart.length === 0 ? <div className="text-center text-muted-foreground py-8">Cart is empty</div> : cart.map(item => (
-                    <div key={item.id} className="flex items-center justify-between bg-muted p-2 rounded-lg">
-                      <div><p className="font-medium text-sm">{item.name}</p><p className="text-xs text-muted-foreground">रू {item.price}</p></div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => updateCartQty(item.menuItemId, -1)} className="w-6 h-6 rounded bg-card flex items-center justify-center"><Minus className="w-3 h-3" /></button>
-                        <span className="w-6 text-center font-medium">{item.qty}</span>
-                        <button onClick={() => updateCartQty(item.menuItemId, 1)} className="w-6 h-6 rounded gradient-primary flex items-center justify-center text-white"><Plus className="w-3 h-3" /></button>
-                      </div>
+                <div className="text-sm mb-2 space-y-1">
+                  {order.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between">
+                      <span>{item.qty}x {item.name}</span>
                     </div>
                   ))}
                 </div>
-                <div className="p-4 border-t border-border space-y-3">
-                  <div className="flex justify-between text-lg font-bold"><span>Total</span><span className="text-primary">रू {cartTotal}</span></div>
-                  <Button className="w-full gradient-primary" size="lg" disabled={cart.length === 0 || !orderTable || !orderPhone} onClick={placeOrder}>Place Order</Button>
+                <div className="text-xs text-[#888] mb-2">ID: #{order.id.slice(-6)}</div>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    className="flex-1 bg-[#27ae60] hover:bg-[#27ae60]/90 text-white"
+                    onClick={() => handleAccept(order)}
+                  >
+                    <Check className="w-3 h-3 mr-1" /> Accept & Print
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="destructive"
+                    onClick={() => handleReject(order.id)}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
                 </div>
               </div>
-            </TabsContent>
-
-            {/* Active Orders Tab */}
-            <TabsContent value="active" className="flex-1 p-4 overflow-y-auto m-0">
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {activeOrders.length === 0 ? (
-                  <div className="col-span-full text-center text-muted-foreground py-8">No accepted orders</div>
-                ) : activeOrders.map(order => (
-                  <div key={order.id} className="bg-card rounded-xl border border-border p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <span className="font-bold">Table {order.tableNumber}</span>
-                        <StatusBadge status={order.status} className="ml-2" />
-                      </div>
-                      <span className="text-xs text-muted-foreground">{formatNepalTime(order.createdAt)}</span>
-                    </div>
-                    <div className="text-sm text-muted-foreground mb-3">{order.items.map(i => `${i.qty}x ${i.name}`).join(', ')}</div>
-                    <div className="text-sm font-semibold text-primary">รू {order.total}</div>
-                  </div>
-                ))}
-              </div>
-            </TabsContent>
-
-            {/* Billing Tab */}
-            <TabsContent value="billing" className="flex-1 p-4 m-0">
-              <div className="max-w-md mx-auto">
-                <div className="bg-card rounded-xl border border-border p-6">
-                  <h2 className="font-bold text-lg mb-4">Generate Bill</h2>
-                  <div className="flex gap-2 mb-4">
-                    <Input placeholder="Table Number" value={billingTable} onChange={(e) => setBillingTable(e.target.value)} type="number" />
-                    <Button onClick={handleLookupTable}><Search className="w-4 h-4 mr-2" /> Find</Button>
-                  </div>
-                  {selectedOrderIds.length > 0 && (
-                    <div className="space-y-4">
-                      <p className="text-sm text-muted-foreground">{selectedOrderIds.length} order(s) found</p>
-                      <Button onClick={handleCreateBill} className="w-full gradient-primary">Create Bill & Pay</Button>
-                    </div>
-                  )}
-                </div>
-
-                {unpaidBills.length > 0 && (
-                  <div className="mt-6">
-                    <h3 className="font-bold mb-4">Unpaid Bills</h3>
-                    <div className="space-y-3">
-                      {unpaidBills.map(bill => (
-                        <div key={bill.id} className="bg-card rounded-xl border border-border p-4">
-                          <div className="flex justify-between mb-2">
-                            <span className="font-bold">Table {bill.tableNumber}</span>
-                            <span className="font-bold text-primary">रू {bill.total}</span>
-                          </div>
-                          <Button size="sm" className="w-full" onClick={() => { setCurrentBillId(bill.id); setPaymentModal(true); }}>Pay Now</Button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-
-            {/* History Tab */}
-            <TabsContent value="history" className="flex-1 p-4 overflow-y-auto m-0">
-              <div className="flex gap-4 mb-4">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input placeholder="Search by table or phone" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
-                </div>
-              </div>
-              <div className="bg-card rounded-xl border border-border overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-muted">
-                    <tr>
-                      <th className="text-left p-4 font-semibold">Time</th>
-                      <th className="text-left p-4 font-semibold">Table</th>
-                      <th className="text-left p-4 font-semibold">Customers</th>
-                      <th className="text-left p-4 font-semibold">Total</th>
-                      <th className="text-left p-4 font-semibold">Method</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTransactions.length === 0 ? (
-                      <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No transactions</td></tr>
-                    ) : filteredTransactions.slice().reverse().map(t => (
-                      <tr key={t.id} className="border-t border-border">
-                        <td className="p-4">{formatNepalDateTime(t.paidAt)}</td>
-                        <td className="p-4">Table {t.tableNumber}</td>
-                        <td className="p-4">{t.customerPhones.join(', ')}</td>
-                        <td className="p-4 font-bold">रू {t.total}</td>
-                        <td className="p-4">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${t.paymentMethod === 'cash' ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary'}`}>
-                            {t.paymentMethod.toUpperCase()}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </TabsContent>
-          </Tabs>
+            ))
+          )}
         </div>
       </div>
 
-      {/* Payment Modal */}
-      <Dialog open={paymentModal} onOpenChange={setPaymentModal}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Select Payment Method</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-4 py-4">
-            <Button onClick={() => handlePayment('cash')} className="h-20 flex-col gap-2" variant="outline">
-              <Banknote className="w-6 h-6" /> Cash
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="bg-white p-5 shadow-sm flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-bold m-0">Counter</h2>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setActiveTab('active')}
+                className={`px-5 py-2.5 rounded-full font-semibold text-sm transition-all ${
+                  activeTab === 'active' 
+                    ? 'bg-[#333] text-white' 
+                    : 'bg-white border border-[#ddd] text-[#555]'
+                }`}
+              >
+                Active Bills
+              </button>
+              <button 
+                onClick={() => setActiveTab('accepted')}
+                className={`px-5 py-2.5 rounded-full font-semibold text-sm transition-all ${
+                  activeTab === 'accepted' 
+                    ? 'bg-[#333] text-white' 
+                    : 'bg-white border border-[#ddd] text-[#555]'
+                }`}
+              >
+                Accepted Orders
+              </button>
+              <button 
+                onClick={() => setActiveTab('history')}
+                className={`px-5 py-2.5 rounded-full font-semibold text-sm transition-all ${
+                  activeTab === 'history' 
+                    ? 'bg-[#333] text-white' 
+                    : 'bg-white border border-[#ddd] text-[#555]'
+                }`}
+              >
+                History
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Input 
+              type="text"
+              placeholder="Table No or Phone"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-48"
+            />
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              <RefreshCw className="w-4 h-4" />
             </Button>
-            <Button onClick={() => handlePayment('fonepay')} className="h-20 flex-col gap-2 gradient-primary">
-              <CreditCard className="w-6 h-6" /> Fonepay
+            <Button variant="outline" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 mr-2" /> Logout
             </Button>
           </div>
+        </div>
+
+        {/* Tab Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {/* Active Bills Tab */}
+          {activeTab === 'active' && (
+            <div className="flex flex-wrap gap-5">
+              {billGroups.slice(0, billsLimit).map(group => (
+                <div 
+                  key={group.key}
+                  onClick={() => toggleSelectBill(group.phone)}
+                  className={`bg-white w-[280px] p-5 rounded-lg border cursor-pointer transition-all hover:-translate-y-1 hover:shadow-lg ${
+                    selectedPhones.includes(group.phone) 
+                      ? 'border-2 border-[#27ae60] bg-[#f0fdf4]' 
+                      : 'border-[#eee]'
+                  }`}
+                >
+                  <div className="flex justify-between font-bold mb-2 border-b border-dashed border-[#eee] pb-1">
+                    <span>{group.phone}</span>
+                    <span>Table {group.tableNumber}</span>
+                  </div>
+                  <div className="mb-2">
+                    {group.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between text-sm">
+                        <span>{item.qty}x {item.name}</span>
+                        <span>{item.total}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="font-bold text-right text-lg border-t border-[#eee] pt-2">
+                    रू{group.subtotal}
+                  </div>
+                  {group.points > 0 && (
+                    <div className="text-xs text-[#f39c12] mt-1">⭐ {group.points} points available</div>
+                  )}
+                  <div className="text-xs text-[#888] mt-1">{formatNepalTime(group.createdAt)}</div>
+                </div>
+              ))}
+              {billGroups.length === 0 && (
+                <div className="w-full text-center text-[#aaa] py-12">No unpaid bills found.</div>
+              )}
+              {billGroups.length > billsLimit && (
+                <div className="w-full text-center mt-4">
+                  <Button variant="outline" onClick={() => setBillsLimit(billsLimit + 10)}>
+                    Show More ({billGroups.length - billsLimit})
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Accepted Orders Tab */}
+          {activeTab === 'accepted' && (
+            <div className="bg-white rounded-lg overflow-hidden shadow-sm">
+              <table className="w-full border-collapse">
+                <thead className="bg-[#f8f9fa]">
+                  <tr>
+                    <th className="p-4 text-left font-bold text-[#555]">ID</th>
+                    <th className="p-4 text-left font-bold text-[#555]">Time</th>
+                    <th className="p-4 text-left font-bold text-[#555]">Table</th>
+                    <th className="p-4 text-left font-bold text-[#555]">Customer</th>
+                    <th className="p-4 text-left font-bold text-[#555]">Items</th>
+                    <th className="p-4 text-left font-bold text-[#555]">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {acceptedOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-[#aaa]">No accepted orders.</td>
+                    </tr>
+                  ) : (
+                    acceptedOrders.map(order => (
+                      <tr key={order.id} className="border-t border-[#eee] hover:bg-[#f9f9f9]">
+                        <td className="p-4">#{order.id.slice(-6)}</td>
+                        <td className="p-4">{formatNepalTime(order.createdAt)}</td>
+                        <td className="p-4">Table {order.tableNumber}</td>
+                        <td className="p-4">{order.customerPhone}</td>
+                        <td className="p-4">{order.items.map(i => `${i.qty}x ${i.name}`).join(', ')}</td>
+                        <td className="p-4 font-bold">रू{order.total}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* History Tab */}
+          {activeTab === 'history' && (
+            <div>
+              <div className="mb-4 flex gap-3">
+                <Input 
+                  type="date" 
+                  value={historyDate}
+                  onChange={(e) => setHistoryDate(e.target.value)}
+                  className="w-48"
+                />
+                <Button onClick={() => setHistoryDate('')}>Clear Filter</Button>
+              </div>
+              <div className="bg-white rounded-lg overflow-hidden shadow-sm">
+                <table className="w-full border-collapse">
+                  <thead className="bg-[#f8f9fa]">
+                    <tr>
+                      <th className="p-4 text-left font-bold text-[#555]">Bill ID</th>
+                      <th className="p-4 text-left font-bold text-[#555]">Paid At</th>
+                      <th className="p-4 text-left font-bold text-[#555]">Table</th>
+                      <th className="p-4 text-left font-bold text-[#555]">Customers</th>
+                      <th className="p-4 text-left font-bold text-[#555]">Total</th>
+                      <th className="p-4 text-left font-bold text-[#555]">Method</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyData.slice(0, historyLimit).length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-[#aaa]">No transactions found.</td>
+                      </tr>
+                    ) : (
+                      historyData.slice(0, historyLimit).map(t => (
+                        <tr 
+                          key={t.id} 
+                          className="border-t border-[#eee] hover:bg-[#f9f9f9] cursor-pointer"
+                          onClick={() => viewTransactionDetail(t)}
+                        >
+                          <td className="p-4">#{t.id.slice(-6)}</td>
+                          <td className="p-4">{formatNepalTime(t.paidAt)}</td>
+                          <td className="p-4">Table {t.tableNumber}</td>
+                          <td className="p-4">{t.customerPhones.join(', ') || 'Guest'}</td>
+                          <td className="p-4 font-bold">रू{t.total}</td>
+                          <td className="p-4">{t.paymentMethod.toUpperCase()}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+                {historyData.length > historyLimit && (
+                  <div className="text-center py-4">
+                    <Button variant="outline" onClick={() => setHistoryLimit(historyLimit + 10)}>
+                      Show More
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Action Bar */}
+        {selectedPhones.length > 0 && (
+          <div className="fixed bottom-5 right-5 bg-[#222] text-white px-8 py-4 rounded-full flex items-center gap-5 shadow-lg z-50 animate-slide-up">
+            <div><span className="font-bold">{selectedPhones.length}</span> bills selected</div>
+            <Button className="bg-[#27ae60] hover:bg-[#27ae60]/90" onClick={openPaymentModal}>
+              Pay & Clear
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Payment Modal */}
+      <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirm Payment</DialogTitle>
+          </DialogHeader>
+          
+          <div className="max-h-[300px] overflow-y-auto border-b border-[#eee] pb-4 mb-4">
+            {selectedGroups.map(group => (
+              <div key={group.key}>
+                <div className="font-bold text-sm mt-3 mb-1">Customer: {group.phone}</div>
+                {group.items.map((item, idx) => (
+                  <div key={idx} className="flex justify-between text-sm">
+                    <span>{item.qty}x {item.name}</span>
+                    <span>{item.total}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Loyalty Points */}
+          {availablePoints > 0 && (
+            <div className="bg-[#e8f5e9] p-3 rounded-lg mb-4">
+              <label className="flex justify-between items-center cursor-pointer">
+                <span>Redeem <b>{availablePoints}</b> points (रू{availablePoints} off)</span>
+                <input 
+                  type="checkbox" 
+                  checked={redeemPoints}
+                  onChange={(e) => setRedeemPoints(e.target.checked)}
+                  className="w-5 h-5"
+                />
+              </label>
+            </div>
+          )}
+
+          {discountAmount > 0 && (
+            <div className="flex justify-between text-[#27ae60] mb-2">
+              <span>Discount (Points)</span>
+              <span>-रू{discountAmount}</span>
+            </div>
+          )}
+
+          <div className="flex justify-between text-xl font-bold mb-6">
+            <span>Total Pay:</span>
+            <span>रू{paymentTotal}</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button 
+              variant="outline" 
+              className="border-2 border-black text-black font-bold py-6"
+              onClick={() => processPayment('cash')}
+            >
+              CASH
+            </Button>
+            <Button 
+              className="bg-[#c32148] hover:bg-[#c32148]/90 py-6 font-bold"
+              onClick={() => processPayment('fonepay')}
+            >
+              FONEPAY
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Fonepay QR Modal */}
+      <Dialog open={fonepayModalOpen} onOpenChange={setFonepayModalOpen}>
+        <DialogContent className="max-w-sm text-center">
+          <DialogHeader>
+            <DialogTitle className="text-[#c32148]">Scan to Pay</DialogTitle>
+          </DialogHeader>
+          <div className="text-[#666] text-sm mb-4">Dynamic QR</div>
+          <div className="flex justify-center mb-4">
+            <div className="w-[180px] h-[180px] bg-[#f0f0f0] rounded-lg flex items-center justify-center">
+              <QrCode className="w-24 h-24 text-[#333]" />
+            </div>
+          </div>
+          <div className="text-3xl font-bold mb-6">रू{paymentTotal}</div>
+          <Button 
+            className="w-full bg-[#27ae60] hover:bg-[#27ae60]/90 py-6"
+            onClick={() => executePayment('fonepay')}
+          >
+            Payment Received
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Modal */}
+      <Dialog open={successModalOpen} onOpenChange={setSuccessModalOpen}>
+        <DialogContent className="max-w-sm text-center">
+          <div className="text-6xl text-[#27ae60] mb-4">✅</div>
+          <h2 className="text-2xl font-bold mb-6">Payment Successful!</h2>
+          <div className="flex gap-3 justify-center">
+            <Button 
+              variant="outline"
+              onClick={() => lastPaidData && printReceipt(lastPaidData)}
+            >
+              <Printer className="w-4 h-4 mr-2" /> Print Receipt
+            </Button>
+            <Button onClick={() => setSuccessModalOpen(false)}>
+              Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction Detail Modal */}
+      <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transaction Details</DialogTitle>
+          </DialogHeader>
+          {currentDetailData && (
+            <>
+              <div className="mb-4">
+                <div className="font-bold">#{currentDetailData.id.slice(-6)}</div>
+                <div className="text-sm text-[#666]">{formatNepalDateTime(currentDetailData.date)}</div>
+                <div className="text-sm">Table {currentDetailData.table} | {currentDetailData.phones}</div>
+              </div>
+              <div className="border-t border-[#eee] pt-3 mb-3">
+                {currentDetailData.items.map((item: any, idx: number) => (
+                  <div key={idx} className="flex justify-between text-sm mb-1">
+                    <span>{item.qty}x {item.name}</span>
+                    <span>{item.qty * item.price}</span>
+                  </div>
+                ))}
+              </div>
+              {currentDetailData.discount > 0 && (
+                <div className="flex justify-between text-[#27ae60]">
+                  <span>Discount</span>
+                  <span>-{currentDetailData.discount}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-lg border-t border-[#eee] pt-3">
+                <span>Total</span>
+                <span>रू{currentDetailData.total}</span>
+              </div>
+              <Button 
+                variant="outline" 
+                className="w-full mt-4"
+                onClick={() => printReceipt(currentDetailData)}
+              >
+                <Printer className="w-4 h-4 mr-2" /> Print Receipt
+              </Button>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
