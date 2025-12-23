@@ -80,6 +80,7 @@ export interface Settings {
   wifiSSID: string;
   wifiPassword: string;
   baseUrl: string;
+  logo?: string;
   // Social media links
   instagramUrl?: string;
   facebookUrl?: string;
