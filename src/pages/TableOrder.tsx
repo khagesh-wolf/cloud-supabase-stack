@@ -321,7 +321,11 @@ export default function TableOrder() {
       {/* Header */}
       <header className="grid grid-cols-[auto_1fr_auto] items-center px-4 py-2.5 bg-white sticky top-0 z-[999] shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">🍵</span>
+          {settings.logo ? (
+            <img src={settings.logo} alt={settings.restaurantName} className="w-9 h-9 rounded-lg object-cover" />
+          ) : (
+            <span className="text-2xl">🍵</span>
+          )}
           <span className="text-lg font-bold tracking-tight text-[#333]">{settings.restaurantName}</span>
         </div>
         

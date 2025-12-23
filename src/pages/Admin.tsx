@@ -1037,66 +1037,134 @@ export default function Admin() {
 
         {/* Settings */}
         {tab === 'settings' && (
-          <div className="max-w-md">
+          <div className="max-w-4xl">
             <h2 className="text-2xl font-bold mb-6">Settings</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Restaurant Name</label>
-                <Input value={settings.restaurantName} onChange={e => updateSettings({ restaurantName: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Table Count</label>
-                <Input type="number" value={settings.tableCount} onChange={e => updateSettings({ tableCount: parseInt(e.target.value) || 10 })} />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Base URL (for QR codes)</label>
-                <Input value={settings.baseUrl} onChange={e => updateSettings({ baseUrl: e.target.value })} placeholder={window.location.origin} />
-              </div>
-              <div>
-                <label className="text-sm font-medium">WiFi SSID</label>
-                <Input value={settings.wifiSSID} onChange={e => updateSettings({ wifiSSID: e.target.value })} />
-              </div>
-              <div>
-                <label className="text-sm font-medium">WiFi Password</label>
-                <Input value={settings.wifiPassword} onChange={e => updateSettings({ wifiPassword: e.target.value })} />
-              </div>
-              
-              {/* Social Media Links Section */}
-              <div className="pt-6 border-t border-border mt-6">
-                <h3 className="text-lg font-semibold mb-4">Social Media Links</h3>
-                <p className="text-sm text-muted-foreground mb-4">Add your social media links. Only links that are filled will be shown to customers.</p>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">Instagram URL</label>
-                    <Input 
-                      value={settings.instagramUrl || ''} 
-                      onChange={e => updateSettings({ instagramUrl: e.target.value })} 
-                      placeholder="https://instagram.com/yourhandle"
-                    />
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Left Column - General Settings */}
+              <div className="space-y-4">
+                <div className="bg-card rounded-xl border border-border p-5">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-primary" />
+                    General Settings
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium">Restaurant Name</label>
+                      <Input value={settings.restaurantName} onChange={e => updateSettings({ restaurantName: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Table Count</label>
+                      <Input type="number" value={settings.tableCount} onChange={e => updateSettings({ tableCount: parseInt(e.target.value) || 10 })} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Base URL (for QR codes)</label>
+                      <Input value={settings.baseUrl} onChange={e => updateSettings({ baseUrl: e.target.value })} placeholder={window.location.origin} />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium">Facebook URL</label>
-                    <Input 
-                      value={settings.facebookUrl || ''} 
-                      onChange={e => updateSettings({ facebookUrl: e.target.value })} 
-                      placeholder="https://facebook.com/yourpage"
-                    />
+                </div>
+
+                <div className="bg-card rounded-xl border border-border p-5">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <QrCode className="w-5 h-5 text-primary" />
+                    WiFi Credentials
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium">WiFi SSID</label>
+                      <Input value={settings.wifiSSID} onChange={e => updateSettings({ wifiSSID: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">WiFi Password</label>
+                      <Input value={settings.wifiPassword} onChange={e => updateSettings({ wifiPassword: e.target.value })} />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium">TikTok URL</label>
-                    <Input 
-                      value={settings.tiktokUrl || ''} 
-                      onChange={e => updateSettings({ tiktokUrl: e.target.value })} 
-                      placeholder="https://tiktok.com/@yourhandle"
-                    />
+                </div>
+
+                {/* Logo Upload Section */}
+                <div className="bg-card rounded-xl border border-border p-5">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <ImageIcon className="w-5 h-5 text-primary" />
+                    Restaurant Logo
+                  </h3>
+                  <div className="flex gap-4 items-center">
+                    {settings.logo ? (
+                      <img src={settings.logo} alt="Logo" className="w-20 h-20 rounded-xl object-cover border-2 border-border" />
+                    ) : (
+                      <div className="w-20 h-20 rounded-xl bg-muted flex items-center justify-center border-2 border-dashed border-border">
+                        <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="flex-1 space-y-2">
+                      <Input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) {
+                            toast.error('Image must be less than 2MB');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            updateSettings({ logo: event.target?.result as string });
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                        className="text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">Max 2MB, JPG/PNG. Used on customer page & printed receipts.</p>
+                      {settings.logo && (
+                        <Button variant="ghost" size="sm" onClick={() => updateSettings({ logo: undefined })}>
+                          <Trash2 className="w-4 h-4 mr-1" /> Remove Logo
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium">Google Review URL</label>
-                    <Input 
-                      value={settings.googleReviewUrl || ''} 
-                      onChange={e => updateSettings({ googleReviewUrl: e.target.value })} 
-                      placeholder="https://g.page/r/your-review-link"
-                    />
+                </div>
+              </div>
+
+              {/* Right Column - Social Media */}
+              <div className="space-y-4">
+                <div className="bg-card rounded-xl border border-border p-5">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-primary" />
+                    Social Media Links
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4">Only links that are filled will be shown to customers.</p>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium">Instagram URL</label>
+                      <Input 
+                        value={settings.instagramUrl || ''} 
+                        onChange={e => updateSettings({ instagramUrl: e.target.value })} 
+                        placeholder="https://instagram.com/yourhandle"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Facebook URL</label>
+                      <Input 
+                        value={settings.facebookUrl || ''} 
+                        onChange={e => updateSettings({ facebookUrl: e.target.value })} 
+                        placeholder="https://facebook.com/yourpage"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">TikTok URL</label>
+                      <Input 
+                        value={settings.tiktokUrl || ''} 
+                        onChange={e => updateSettings({ tiktokUrl: e.target.value })} 
+                        placeholder="https://tiktok.com/@yourhandle"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Google Review URL</label>
+                      <Input 
+                        value={settings.googleReviewUrl || ''} 
+                        onChange={e => updateSettings({ googleReviewUrl: e.target.value })} 
+                        placeholder="https://g.page/r/your-review-link"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

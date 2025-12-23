@@ -352,39 +352,73 @@ export default function Counter() {
 
   return (
     <div className="flex h-screen bg-[#f0f2f5] overflow-hidden">
-      {/* Sidebar - Incoming Orders & Waiter Calls */}
-      <div className="w-[350px] bg-[#2c3e50] text-white flex flex-col border-r border-[#34495e]">
-        <div className="p-5 bg-[#1a252f] border-b border-[#34495e]">
-          <div className="text-lg font-bold flex justify-between items-center">
-            Incoming Orders
-            <span className="w-2.5 h-2.5 bg-[#e74c3c] rounded-full inline-block animate-pulse" />
-          </div>
-          <div className="text-xs text-[#bdc3c7] mt-1">Pending acceptance</div>
+      {/* Sidebar - Incoming Orders & Waiter Calls - 3D Enhanced */}
+      <div className="w-[350px] text-white flex flex-col relative overflow-hidden"
+        style={{
+          background: 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+          boxShadow: 'inset -2px 0 8px rgba(0,0,0,0.3), 4px 0 20px rgba(0,0,0,0.4)'
+        }}
+      >
+        {/* Decorative 3D elements */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-white/5 to-transparent" />
+          <div className="absolute -top-20 -right-20 w-40 h-40 rounded-full bg-primary/10 blur-3xl" />
+          <div className="absolute bottom-20 -left-10 w-32 h-32 rounded-full bg-secondary/10 blur-2xl" />
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Header with 3D effect */}
+        <div className="p-5 relative z-10"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.02) 100%)',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.2)'
+          }}
+        >
+          <div className="flex items-center gap-3">
+            {settings.logo && (
+              <img src={settings.logo} alt="Logo" className="w-10 h-10 rounded-lg object-cover border border-white/20" />
+            )}
+            <div className="flex-1">
+              <div className="text-lg font-bold flex justify-between items-center">
+                <span className="bg-gradient-to-r from-white to-white/80 bg-clip-text text-transparent">
+                  Incoming Orders
+                </span>
+                <span className="w-3 h-3 bg-red-500 rounded-full inline-block animate-pulse shadow-lg shadow-red-500/50" />
+              </div>
+              <div className="text-xs text-white/50 mt-0.5">Pending acceptance</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 relative z-10">
           {/* Waiter Calls Section */}
           {getPendingWaiterCalls().length > 0 && (
             <div className="space-y-3">
-              <div className="text-sm font-semibold text-[#f39c12] flex items-center gap-2">
+              <div className="text-sm font-semibold text-amber-400 flex items-center gap-2">
                 <Bell className="w-4 h-4" /> Waiter Calls
               </div>
               {getPendingWaiterCalls().map(call => (
                 <div 
                   key={call.id} 
-                  className="bg-[#fff8e1] text-[#333] rounded-lg p-3 border-l-4 border-[#f39c12] animate-pulse"
+                  className="rounded-xl p-4 animate-pulse relative overflow-hidden"
+                  style={{
+                    background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                    boxShadow: '0 8px 20px rgba(251,191,36,0.3), inset 0 1px 0 rgba(255,255,255,0.8)',
+                    transform: 'translateZ(0)'
+                  }}
                 >
+                  <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 rounded-l-xl" />
                   <div className="flex justify-between items-center mb-2">
-                    <span className="font-bold text-lg">Table {call.tableNumber}</span>
-                    <span className="text-xs text-[#888]">{formatNepalTime(call.createdAt)}</span>
+                    <span className="font-bold text-lg text-gray-800">Table {call.tableNumber}</span>
+                    <span className="text-xs text-gray-500">{formatNepalTime(call.createdAt)}</span>
                   </div>
-                  <div className="text-sm text-[#666] mb-2">
+                  <div className="text-sm text-gray-600 mb-3">
                     Customer: {call.customerPhone}
                   </div>
                   <div className="flex gap-2">
                     <Button 
                       size="sm" 
-                      className="flex-1 bg-[#27ae60] hover:bg-[#27ae60]/90 text-white"
+                      className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/30"
                       onClick={() => {
                         acknowledgeWaiterCall(call.id);
                         toast.success(`Going to Table ${call.tableNumber}`);
@@ -395,7 +429,7 @@ export default function Counter() {
                     <Button 
                       size="sm" 
                       variant="outline"
-                      className="border-[#ccc]"
+                      className="border-gray-300 text-gray-600 hover:bg-gray-100"
                       onClick={() => {
                         dismissWaiterCall(call.id);
                         toast.info('Call dismissed');
@@ -411,39 +445,50 @@ export default function Counter() {
 
           {/* Pending Orders */}
           {pendingOrders.length === 0 && getPendingWaiterCalls().length === 0 ? (
-            <div className="text-center text-[#7f8c8d] mt-12">No pending orders</div>
+            <div className="text-center text-white/40 mt-12 py-8">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/5 flex items-center justify-center">
+                <Check className="w-8 h-8 text-white/20" />
+              </div>
+              <p>No pending orders</p>
+            </div>
           ) : (
             pendingOrders.map(order => (
               <div 
                 key={order.id} 
-                className="bg-white text-[#333] rounded-lg p-4 border-l-4 border-[#f39c12] animate-slide-up"
+                className="rounded-xl p-4 animate-slide-up relative overflow-hidden group transition-all duration-300 hover:scale-[1.02]"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.85) 100%)',
+                  boxShadow: '0 8px 25px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,1)',
+                  transform: 'translateZ(0)'
+                }}
               >
-                <div className="flex justify-between font-bold mb-1 border-b border-dashed border-[#eee] pb-1">
-                  <span>Table {order.tableNumber}</span>
-                  <span>{formatNepalTime(order.createdAt)}</span>
+                <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-amber-400 to-orange-500 rounded-l-xl" />
+                <div className="flex justify-between font-bold mb-1 border-b border-dashed border-gray-200 pb-2 text-gray-800">
+                  <span className="text-lg">Table {order.tableNumber}</span>
+                  <span className="text-sm font-normal text-gray-500">{formatNepalTime(order.createdAt)}</span>
                 </div>
-                <div className="text-sm text-[#555] italic mb-2">
+                <div className="text-sm text-gray-500 italic mb-2">
                   Customer: {order.customerPhone}
                 </div>
-                <div className="text-sm mb-2 space-y-1">
+                <div className="text-sm mb-3 space-y-1">
                   {order.items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between">
-                      <span>{item.qty}x {item.name}</span>
+                    <div key={idx} className="flex justify-between text-gray-700">
+                      <span className="font-medium">{item.qty}x {item.name}</span>
                     </div>
                   ))}
                 </div>
-                <div className="text-xs text-[#888] mb-2">ID: #{order.id.slice(-6)}</div>
+                <div className="text-xs text-gray-400 mb-3">ID: #{order.id.slice(-6)}</div>
                 <div className="flex gap-2">
                   <Button 
                     size="sm" 
-                    className="flex-1 bg-[#27ae60] hover:bg-[#27ae60]/90 text-white"
+                    className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg shadow-emerald-500/30"
                     onClick={() => handleAccept(order)}
                   >
                     <Check className="w-3 h-3 mr-1" /> Accept & Print
                   </Button>
                   <Button 
                     size="sm" 
-                    variant="destructive"
+                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg shadow-red-500/30"
                     onClick={() => handleReject(order.id)}
                   >
                     <X className="w-3 h-3" />
@@ -453,6 +498,9 @@ export default function Counter() {
             ))
           )}
         </div>
+
+        {/* Bottom gradient fade */}
+        <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-[#0f3460] to-transparent pointer-events-none z-10" />
       </div>
 
       {/* Main Content */}
