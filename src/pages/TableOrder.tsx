@@ -45,6 +45,18 @@ const isInSafari = () => {
   return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 };
 
+// Check if running as PWA (works for both iOS and Android)
+const isPWAMode = () => {
+  // iOS uses navigator.standalone
+  const isIOSStandalone = (window.navigator as any).standalone === true;
+  // Android/Desktop uses display-mode: standalone
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+  // Also check for fullscreen mode
+  const isFullscreen = window.matchMedia('(display-mode: fullscreen)').matches;
+  
+  return isIOSStandalone || isStandalone || isFullscreen;
+};
+
 export default function TableOrder() {
   const { tableNumber } = useParams();
   const navigate = useNavigate();
@@ -68,7 +80,7 @@ export default function TableOrder() {
   const table = parseInt(tableNumber || '0');
   
   // Check if running as PWA
-  const isPWA = window.matchMedia('(display-mode: standalone)').matches;
+  const isPWA = isPWAMode();
   const iOS = isIOS();
   const safari = isInSafari();
   
