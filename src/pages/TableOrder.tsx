@@ -631,13 +631,16 @@ export default function TableOrder() {
                   setBillModalOpen(true);
                   return;
                 }
-                // Clear session and logout
+                // Clear ALL session data including phone
                 localStorage.removeItem('chiyadani:customerActiveSession');
+                localStorage.removeItem('chiyadani:customerPhone');
                 setPhone('');
                 setIsPhoneEntered(false);
                 setCart([]);
                 setDrawerOpen(false);
                 toast.success('Logged out successfully');
+                // Redirect to scan page
+                navigate('/scan');
               }}
               className="w-full bg-[#fff0f0] border border-[#ffcccc] px-3 py-2 rounded-full text-sm font-semibold text-[#e74c3c] flex items-center gap-2 justify-start"
             >
