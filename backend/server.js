@@ -631,41 +631,50 @@ app.put('/api/settings', (req, res) => {
       pointSystemEnabled, pointsPerRupee, pointValueInRupees, maxDiscountRupees, maxDiscountPoints
     } = req.body;
     
+    console.log('[Settings] Updating with:', { pointSystemEnabled, pointsPerRupee });
+    
     // Get existing settings to preserve any fields we're not updating
     const existing = queryOne('SELECT * FROM settings WHERE id=1');
     
-    // Build a simple update with only the core fields that are guaranteed to exist
-    db.run(`
+    // Update all settings in a single query including point system fields
+    const stmt = db.prepare(`
       UPDATE settings SET 
         restaurant_name=?, table_count=?, wifi_ssid=?, wifi_password=?, base_url=?, 
-        logo=?, instagram_url=?, facebook_url=?, tiktok_url=?, google_review_url=?
+        logo=?, instagram_url=?, facebook_url=?, tiktok_url=?, google_review_url=?,
+        counter_as_admin=?, point_system_enabled=?, points_per_rupee=?, 
+        point_value_in_rupees=?, max_discount_rupees=?, max_discount_points=?
       WHERE id=1
-    `, [
-      restaurantName ?? existing?.restaurant_name, 
-      tableCount ?? existing?.table_count, 
-      wifiSSID ?? existing?.wifi_ssid, 
-      wifiPassword ?? existing?.wifi_password, 
-      baseUrl ?? existing?.base_url, 
-      logo ?? existing?.logo,
-      instagramUrl ?? existing?.instagram_url, 
-      facebookUrl ?? existing?.facebook_url, 
-      tiktokUrl ?? existing?.tiktok_url, 
-      googleReviewUrl ?? existing?.google_review_url
+    `);
+    
+    stmt.bind([
+      restaurantName ?? existing?.restaurant_name ?? '', 
+      tableCount ?? existing?.table_count ?? 10, 
+      wifiSSID ?? existing?.wifi_ssid ?? '', 
+      wifiPassword ?? existing?.wifi_password ?? '', 
+      baseUrl ?? existing?.base_url ?? '', 
+      logo ?? existing?.logo ?? null,
+      instagramUrl ?? existing?.instagram_url ?? '', 
+      facebookUrl ?? existing?.facebook_url ?? '', 
+      tiktokUrl ?? existing?.tiktok_url ?? '', 
+      googleReviewUrl ?? existing?.google_review_url ?? '',
+      counterAsAdmin ? 1 : 0,
+      pointSystemEnabled ? 1 : 0,
+      pointsPerRupee ?? existing?.points_per_rupee ?? 0.1,
+      pointValueInRupees ?? existing?.point_value_in_rupees ?? 1,
+      maxDiscountRupees ?? existing?.max_discount_rupees ?? null,
+      maxDiscountPoints ?? existing?.max_discount_points ?? null
     ]);
     
-    // Try to update optional columns individually (will silently fail if column doesn't exist)
-    try { db.run('UPDATE settings SET counter_as_admin=? WHERE id=1', [counterAsAdmin ? 1 : 0]); } catch(e) { console.log('[Settings] counter_as_admin column missing'); }
-    try { db.run('UPDATE settings SET point_system_enabled=? WHERE id=1', [pointSystemEnabled ? 1 : 0]); } catch(e) { console.log('[Settings] point_system_enabled column missing'); }
-    try { db.run('UPDATE settings SET points_per_rupee=? WHERE id=1', [pointsPerRupee ?? 0.1]); } catch(e) { console.log('[Settings] points_per_rupee column missing'); }
-    try { db.run('UPDATE settings SET point_value_in_rupees=? WHERE id=1', [pointValueInRupees ?? 1]); } catch(e) { console.log('[Settings] point_value_in_rupees column missing'); }
-    try { db.run('UPDATE settings SET max_discount_rupees=? WHERE id=1', [maxDiscountRupees ?? null]); } catch(e) { console.log('[Settings] max_discount_rupees column missing'); }
-    try { db.run('UPDATE settings SET max_discount_points=? WHERE id=1', [maxDiscountPoints ?? null]); } catch(e) { console.log('[Settings] max_discount_points column missing'); }
+    stmt.step();
+    stmt.free();
     
     saveDatabase();
+    console.log('[Settings] Updated successfully, pointSystemEnabled:', pointSystemEnabled ? 1 : 0);
+    
     broadcast('SETTINGS_UPDATE', req.body);
     res.json({ success: true });
   } catch (error) {
-    console.error('[API] Settings update error:', error);
+    console.error('[API] Settings update error:', error.message, error.stack);
     res.status(500).json({ message: 'Failed to update settings', error: error.message });
   }
 });
