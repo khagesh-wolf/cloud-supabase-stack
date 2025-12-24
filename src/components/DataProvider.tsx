@@ -157,17 +157,19 @@ export function DataProvider({ children }: DataProviderProps) {
       })
     );
 
-    // Bill updates
+    // Bill updates - also refresh orders since paying a bill changes order status to 'served'
     unsubscribers.push(
       wsSync.on('BILL_UPDATE', async () => {
         console.log('[DataProvider] Received BILL_UPDATE');
-        const [bills, transactions] = await Promise.all([
+        const [bills, transactions, orders] = await Promise.all([
           billsApi.getAll(),
           transactionsApi.getAll(),
+          ordersApi.getAll(),
         ]);
         const store = useStore.getState();
         store.setBills(bills);
         store.setTransactions(transactions);
+        store.setOrders(orders);
       })
     );
 
