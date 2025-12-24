@@ -121,9 +121,17 @@ async function initDatabase() {
       instagram_url TEXT,
       facebook_url TEXT,
       tiktok_url TEXT,
-      google_review_url TEXT
+      google_review_url TEXT,
+      counter_as_admin INTEGER DEFAULT 0
     );
   `);
+  
+  // Migration: Add counter_as_admin column if it doesn't exist
+  try {
+    db.run(`ALTER TABLE settings ADD COLUMN counter_as_admin INTEGER DEFAULT 0`);
+  } catch (e) {
+    // Column already exists, ignore
+  }
   
   db.run(`
     CREATE TABLE IF NOT EXISTS expenses (
@@ -523,18 +531,20 @@ app.get('/api/settings', (req, res) => {
     instagramUrl: settings?.instagram_url,
     facebookUrl: settings?.facebook_url,
     tiktokUrl: settings?.tiktok_url,
-    googleReviewUrl: settings?.google_review_url
+    googleReviewUrl: settings?.google_review_url,
+    counterAsAdmin: Boolean(settings?.counter_as_admin)
   });
 });
 
 app.put('/api/settings', (req, res) => {
-  const { restaurantName, tableCount, wifiSSID, wifiPassword, baseUrl, logo, instagramUrl, facebookUrl, tiktokUrl, googleReviewUrl } = req.body;
+  const { restaurantName, tableCount, wifiSSID, wifiPassword, baseUrl, logo, instagramUrl, facebookUrl, tiktokUrl, googleReviewUrl, counterAsAdmin } = req.body;
   runQuery(`
     UPDATE settings SET 
       restaurant_name=?, table_count=?, wifi_ssid=?, wifi_password=?, base_url=?, 
-      logo=?, instagram_url=?, facebook_url=?, tiktok_url=?, google_review_url=?
+      logo=?, instagram_url=?, facebook_url=?, tiktok_url=?, google_review_url=?,
+      counter_as_admin=?
     WHERE id=1
-  `, [restaurantName, tableCount, wifiSSID, wifiPassword, baseUrl, logo, instagramUrl, facebookUrl, tiktokUrl, googleReviewUrl]);
+  `, [restaurantName, tableCount, wifiSSID, wifiPassword, baseUrl, logo, instagramUrl, facebookUrl, tiktokUrl, googleReviewUrl, counterAsAdmin ? 1 : 0]);
   broadcast('SETTINGS_UPDATE', req.body);
   res.json({ success: true });
 });

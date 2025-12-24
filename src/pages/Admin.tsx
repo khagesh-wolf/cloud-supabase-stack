@@ -557,6 +557,16 @@ export default function Admin() {
           const wifiSSID = ${JSON.stringify(settings.wifiSSID || '')};
           const restaurantName = ${JSON.stringify(settings.restaurantName)};
           
+          function waitForQRCode(callback, attempts = 0) {
+            if (typeof QRCode !== 'undefined') {
+              callback();
+            } else if (attempts < 50) {
+              setTimeout(() => waitForQRCode(callback, attempts + 1), 100);
+            } else {
+              console.error('QRCode library failed to load');
+            }
+          }
+          
           async function generateCards() {
             const container = document.getElementById('cards');
             const qrElements = [];
@@ -631,7 +641,8 @@ export default function Admin() {
             setTimeout(() => window.print(), 500);
           }
           
-          generateCards();
+          // Wait for QRCode library to load before generating
+          waitForQRCode(generateCards);
         <\/script>
       </body>
       </html>
