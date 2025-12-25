@@ -90,9 +90,9 @@ export default function Install() {
     const pendingTable = sessionStorage.getItem('chiyadani:pendingTable');
     if (pendingTable) {
       sessionStorage.removeItem('chiyadani:pendingTable');
-      navigate(`/scan?table=${pendingTable}`);
+      navigate(`/?table=${pendingTable}`);
     } else {
-      navigate('/scan');
+      navigate('/');
     }
   };
 
@@ -299,7 +299,7 @@ export default function Install() {
 
       {/* Skip link */}
       <button 
-        onClick={() => navigate('/scan')}
+        onClick={() => navigate('/')}
         className="mt-6 text-sm text-gray-500 underline"
       >
         Continue in browser instead

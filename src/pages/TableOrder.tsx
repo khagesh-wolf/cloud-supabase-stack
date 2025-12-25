@@ -153,11 +153,11 @@ export default function TableOrder() {
             // Clear only table session
             localStorage.removeItem(sessionKey);
             toast.info('Table session expired. Please scan your table QR again.');
-            navigate('/scan', { replace: true });
+            navigate('/', { replace: true });
           }
         } catch {
           localStorage.removeItem(sessionKey);
-          navigate('/scan', { replace: true });
+          navigate('/', { replace: true });
         }
       }
     };
@@ -175,7 +175,7 @@ export default function TableOrder() {
   useEffect(() => {
     if (!table || table < 1 || table > settings.tableCount) {
       toast.error('Invalid table number');
-      navigate('/scan');
+      navigate('/');
       return;
     }
 
@@ -620,7 +620,7 @@ export default function TableOrder() {
                 setDrawerOpen(false);
                 toast.success('Logged out successfully');
                 // Redirect to scan page
-                navigate('/scan');
+                navigate('/');
               }}
               className="w-full bg-[#fff0f0] border border-[#ffcccc] px-3 py-2 rounded-full text-sm font-semibold text-[#e74c3c] flex items-center gap-2 justify-start"
             >
