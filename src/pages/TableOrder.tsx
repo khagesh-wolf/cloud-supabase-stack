@@ -115,19 +115,23 @@ export default function TableOrder() {
     return undefined;
   };
 
-  // Check if running as PWA - redirect to install if not
+  // State for install prompt
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [hasShownInstallPrompt, setHasShownInstallPrompt] = useState(false);
+
+  // Capture install prompt event
   useEffect(() => {
-    if (!isPWA()) {
-      // Store the intended table for after install
-      sessionStorage.setItem('chiyadani:pendingTable', String(table));
-      navigate('/install', { replace: true });
-      return;
-    }
-  }, [navigate, table]);
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
 
   // Auto-logout table after 4 hours - keep phone number
   useEffect(() => {
-    if (!isPWA()) return;
     
     const checkSessionExpiry = () => {
       const sessionKey = 'chiyadani:customerActiveSession';
@@ -169,9 +173,6 @@ export default function TableOrder() {
 
   // Validate table number and handle session
   useEffect(() => {
-    // Skip if not PWA (will be redirected)
-    if (!isPWA()) return;
-    
     if (!table || table < 1 || table > settings.tableCount) {
       toast.error('Invalid table number');
       navigate('/scan');
@@ -999,7 +1000,16 @@ export default function TableOrder() {
           <div className="bg-white w-full rounded-t-[20px] p-8 max-h-[80vh] overflow-y-auto animate-slide-up">
             <div className="flex justify-between items-center mb-5">
               <h2 className="text-2xl font-bold">My Orders</h2>
-              <button onClick={() => setBillModalOpen(false)} className="text-2xl">×</button>
+              <button onClick={() => {
+                setBillModalOpen(false);
+                // Show install prompt after closing bill if not PWA and not shown before
+                if (!isPWA() && !hasShownInstallPrompt && myOrders.length > 0) {
+                  setTimeout(() => {
+                    setShowInstallPrompt(true);
+                    setHasShownInstallPrompt(true);
+                  }, 500);
+                }
+              }} className="text-2xl">×</button>
             </div>
             
             {myOrders.length === 0 ? (
@@ -1047,6 +1057,66 @@ export default function TableOrder() {
 
             <div className="mt-5 border-t border-[#eee] pt-4 text-right">
               <h3 className="text-xl font-bold">Total Due: रू{totalDue}</h3>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subtle Install Prompt */}
+      {showInstallPrompt && !isPWA() && (
+        <div className="fixed bottom-0 left-0 right-0 z-[2000] animate-slide-up">
+          <div className="bg-white border-t border-[#eee] shadow-[0_-4px_20px_rgba(0,0,0,0.1)] p-4 mx-auto max-w-md rounded-t-2xl">
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center flex-shrink-0">
+                {settings.logo ? (
+                  <img src={settings.logo} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                ) : (
+                  <span className="text-2xl">🍵</span>
+                )}
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-[#333]">Install our app?</h3>
+                <p className="text-sm text-[#666] mt-0.5">Order faster next time with one tap</p>
+              </div>
+              <button
+                onClick={() => setShowInstallPrompt(false)}
+                className="text-[#999] text-xl leading-none p-1"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setShowInstallPrompt(false)}
+                className="flex-1 py-2.5 px-4 rounded-full border border-[#ddd] text-[#666] font-medium text-sm"
+              >
+                Not now
+              </button>
+              {deferredPrompt ? (
+                <button
+                  onClick={async () => {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                      toast.success('App installed!');
+                    }
+                    setDeferredPrompt(null);
+                    setShowInstallPrompt(false);
+                  }}
+                  className="flex-1 py-2.5 px-4 rounded-full bg-black text-white font-medium text-sm"
+                >
+                  Install App
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    navigate('/install');
+                  }}
+                  className="flex-1 py-2.5 px-4 rounded-full bg-black text-white font-medium text-sm"
+                >
+                  How to Install
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -25,14 +25,11 @@ const App = () => (
       <DataProvider>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
-            {/* Root redirects to scan for customers */}
-            <Route path="/" element={<Navigate to="/scan" replace />} />
+            {/* Customer landing - scan table QR */}
+            <Route path="/" element={<ScanTable />} />
             
             {/* Staff hub - requires knowing the URL */}
             <Route path="/hub" element={<Hub />} />
-            
-            {/* Customer routes */}
-            <Route path="/scan" element={<ScanTable />} />
             <Route path="/install" element={<Install />} />
             <Route path="/table/:tableNumber" element={<TableOrder />} />
             

@@ -67,9 +67,10 @@ export default function ScanTable() {
     }
   }, [tableFromQR, settings.tableCount, navigate]);
 
-  // Check for existing session (only if no QR table parameter)
+  // Check for existing session (only if no QR table parameter) - only for PWA
   useEffect(() => {
     if (tableFromQR) return; // Skip if we're processing a QR scan
+    if (!isPWA()) return; // Only auto-redirect in PWA mode
     
     const sessionKey = 'chiyadani:customerActiveSession';
     const phoneKey = 'chiyadani:customerPhone';
@@ -136,15 +137,12 @@ export default function ScanTable() {
         
         <h2 className="text-xl font-semibold mb-2">Scan Table QR Code</h2>
         <p className="text-gray-400 text-sm mb-6">
-          {isPWA() 
-            ? "Use your camera to scan the QR code on your table."
-            : "Please scan the QR code on your table to start ordering delicious food and drinks."
-          }
+          Scan the QR code on your table to start ordering delicious food and drinks.
         </p>
 
         <div className="flex items-center justify-center gap-2 text-amber-400 text-sm">
           <Smartphone className="w-4 h-4" />
-          <span>Use your camera app to scan</span>
+          <span>{isPWA() ? 'Tap button below to scan' : 'Use your camera app to scan'}</span>
         </div>
       </div>
 
